@@ -979,7 +979,7 @@ nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int *fd, s;
 
-    if (!enif_get_resource(env, argv[0], (void**)&fd))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&fd))
         return enif_make_badarg(env);
     s = *fd;
     *fd = -1;
