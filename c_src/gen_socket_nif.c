@@ -270,7 +270,7 @@ static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
 
 // -------------------------------------------------------------------------------------------------
 // -- NIF FUNCTIONS
-int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
+static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
     atom_ok      = enif_make_atom(env, "ok");
     atom_eof     = enif_make_atom(env, "eof");
@@ -284,7 +284,6 @@ int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     }
     return 0;
 }
-
 // param 0: socket address term
 static ERL_NIF_TERM
 nif_encode_sockaddr(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
