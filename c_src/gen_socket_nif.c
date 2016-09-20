@@ -419,13 +419,13 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return error_tuple(env, errno);
     }
 
-    flags = fcntl(s, F_GETFL, 0);
+    flags = fcntl(*fd, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    (void)fcntl(s, F_SETFL, flags);
+    (void)fcntl(*fd, F_SETFL, flags);
 
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_int(env, *fd));
+           enif_make_resource(env, fd));
 }
 
 /*  0: netnsfile, 1: procotol, 2: type, 3: family */
@@ -437,12 +437,12 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int type = 0;
     int protocol = 0;
     int flags = 0;
-    int s = -1;
     int errsv;
     char filename[PATH_MAX];
     int nsfd = 0;
     sigset_t intmask, oldmask;
     int old_nsfd;
+    int *fd = 0;
 
     if (!enif_inspect_binary(env, argv[0], &netnsfile) || 
         netnsfile.size > PATH_MAX -1 || 
@@ -466,8 +466,12 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     sigfillset(&intmask);
     sigprocmask(SIG_BLOCK, &intmask, &oldmask);
 
+    fd = enif_alloc_resource(rsrc_sock, sizeof(*fd)); 
+    if(!fd) {
+        return error_tuple(env, ENOMEM);
+    }
     setns(nsfd, CLONE_NEWNET);
-    s = socket(family, type, protocol);
+    *fd = socket(family, type, protocol);
     errsv = errno;
     setns(old_nsfd, CLONE_NEWNET);
 
@@ -476,16 +480,16 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     close(nsfd);
     close(old_nsfd);
 
-    if (s < 0)
+    if (*fd < 0)
         return error_tuple(env, errsv);
 
-    flags = fcntl(s, F_GETFL, 0);
+    flags = fcntl(*fd, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    (void)fcntl(s, F_SETFL, flags);
+    (void)fcntl(*fd, F_SETFL, flags);
 
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_int(env, s));
+           enif_make_resource(env, fd));
 }
 
 // param 0: socket
@@ -974,11 +978,12 @@ nif_getsock_error(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
+    int *fd, s;
 
-    if (!enif_get_int(env, argv[0], &s))
+    if (!enif_get_resource(env, argv[0], (void**)&fd))
         return enif_make_badarg(env);
-
+    s = *fd;
+    *fd = -1;
     if (close(s) < 0)
         return error_tuple(env, errno);
 
