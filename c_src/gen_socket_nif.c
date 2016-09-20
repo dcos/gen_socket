@@ -90,21 +90,21 @@ error_tuple(ErlNifEnv *env, int errnum)
     return enif_make_tuple2(env, atom_error, enif_make_atom(env, erl_errno_id(errnum)));
 }
 
-#define fionread(len)					\
-    do {						\
-	if (len < 0) {					\
-	    int i;					\
-	    						\
-	    if (ioctl(socket, FIONREAD, &i) < 0)	\
-		return error_tuple(env, errno);		\
-	    else					\
-		len = i;				\
-	}						\
-							\
-	if (len == 0)					\
-	    len = 1024;					\
-	if (len > SSIZE_MAX)				\
-	    len = SSIZE_MAX;				\
+#define fionread(len)                    \
+    do {                        \
+    if (len < 0) {                    \
+        int i;                    \
+                                \
+        if (ioctl(socket, FIONREAD, &i) < 0)    \
+        return error_tuple(env, errno);        \
+        else                    \
+        len = i;                \
+    }                        \
+                            \
+    if (len == 0)                    \
+        len = 1024;                    \
+    if (len > SSIZE_MAX)                \
+        len = SSIZE_MAX;                \
     } while (0)
 
 // -------------------------------------------------------------------------------------------------
@@ -255,16 +255,17 @@ term_to_sockaddr(ErlNifEnv* env, ERL_NIF_TERM term, struct sockaddr* addr, sockl
 }
 
 static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
-  int *socket, s;
+  int *sock, s;
   if(!obj) {
     return;
   }
-  socket = obj;
-  if(*socket < 0) {
+  sock = obj;
+  s = *sock;
+  *sock = -1;
+  fprintf(stderr, "rsrc_sock_dtor %d\n", s);
+  if(s < 0) {
     return;
   }
-  s = *socket;
-  *socket = -1;
   close(s);
 }
 
@@ -320,14 +321,14 @@ nif_decode_sockaddr(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_getsockname(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket;
+    int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
 
-    if (getsockname(*socket, (struct sockaddr*) &addr, &addrlen) != 0)
+    if (getsockname(*sock, (struct sockaddr*) &addr, &addrlen) != 0)
         return error_tuple(env, errno);
 
     return sockaddr_to_term(env, &addr, addrlen);
@@ -337,14 +338,14 @@ nif_getsockname(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_getpeername(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket;
+    int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
 
-    if (getpeername(*socket, (struct sockaddr*) &addr, &addrlen) != 0)
+    if (getpeername(*sock, (struct sockaddr*) &addr, &addrlen) != 0)
         return error_tuple(env, errno);
 
     return sockaddr_to_term(env, &addr, addrlen);
@@ -355,18 +356,18 @@ nif_getpeername(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket;
+    int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) || 
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) || 
         !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
         return error_tuple(env, E2BIG);
 
-    if (bind(*socket, (struct sockaddr*) &addr, addrlen))
+    if (bind(*sock, (struct sockaddr*) &addr, addrlen))
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -377,18 +378,18 @@ nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket;
+    int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) ||
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
         !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
         return error_tuple(env, E2BIG);
 
-    if (connect(*socket, (struct sockaddr*) &addr, addrlen))
+    if (connect(*sock, (struct sockaddr*) &addr, addrlen))
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -401,10 +402,10 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int type = 0;
     int protocol = 0;
     int flags = 0;
-    int *fd = 0;
+    int *sock = 0;
 
-    fd = enif_alloc_resource(rsrc_sock, sizeof(*fd)); 
-    if(!fd) {
+    sock = enif_alloc_resource(rsrc_sock, sizeof(*sock)); 
+    if(!sock) {
         return error_tuple(env, ENOMEM);
     }
     if (!enif_get_int(env, argv[0], &family) || 
@@ -413,18 +414,19 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
       return enif_make_badarg(env);
     }
 
-    *fd = socket(family, type, protocol);
-    if (*fd < 0) {
+    *sock = socket(family, type, protocol);
+    if (*sock < 0) {
         return error_tuple(env, errno);
     }
+    fprintf(stderr, "new socket: %d\n", *sock);
 
-    flags = fcntl(*fd, F_GETFL, 0);
+    flags = fcntl(*sock, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    (void)fcntl(*fd, F_SETFL, flags);
+    (void)fcntl(*sock, F_SETFL, flags);
 
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_resource(env, fd));
+           enif_make_resource(env, sock));
 }
 
 /*  0: netnsfile, 1: procotol, 2: type, 3: family */
@@ -441,8 +443,12 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int nsfd = 0;
     sigset_t intmask, oldmask;
     int old_nsfd;
-    int *fd = 0;
+    int *sock = 0;
 
+    sock = enif_alloc_resource(rsrc_sock, sizeof(*sock)); 
+    if(!sock) {
+        return error_tuple(env, ENOMEM);
+    }
     if (!enif_inspect_binary(env, argv[0], &netnsfile) || 
         netnsfile.size > PATH_MAX -1 || 
         !enif_get_int(env, argv[1], &family) || 
@@ -457,20 +463,17 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return error_tuple(env, errno);
 
     if ((old_nsfd = open("/proc/self/ns/net", O_RDONLY)) < 0) {
-	      errsv = errno;
-	      close(nsfd);
+          errsv = errno;
+          close(nsfd);
         return error_tuple(env, errsv);
     }
 
     sigfillset(&intmask);
     sigprocmask(SIG_BLOCK, &intmask, &oldmask);
 
-    fd = enif_alloc_resource(rsrc_sock, sizeof(*fd)); 
-    if(!fd) {
-        return error_tuple(env, ENOMEM);
-    }
     setns(nsfd, CLONE_NEWNET);
-    *fd = socket(family, type, protocol);
+    *sock = socket(family, type, protocol);
+    fprintf(stderr, "new socket: %d\n", *sock);
     errsv = errno;
     setns(old_nsfd, CLONE_NEWNET);
 
@@ -479,16 +482,16 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     close(nsfd);
     close(old_nsfd);
 
-    if (*fd < 0)
+    if (*sock < 0)
         return error_tuple(env, errsv);
 
-    flags = fcntl(*fd, F_GETFL, 0);
+    flags = fcntl(*sock, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    (void)fcntl(*fd, F_SETFL, flags);
+    (void)fcntl(*sock, F_SETFL, flags);
 
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_resource(env, fd));
+           enif_make_resource(env, sock));
 }
 
 // param 0: socket
@@ -496,14 +499,14 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_listen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket;
+    int *sock;
     int backlog = 5;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) ||
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
         !enif_get_int(env, argv[1], &backlog))
         return enif_make_badarg(env);
 
-    if (listen(*socket, backlog) < 0)
+    if (listen(*sock, backlog) < 0)
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -513,19 +516,23 @@ nif_listen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket, newfd;
+    int *sock, *newfd;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket))
+    newfd = enif_alloc_resource(rsrc_sock, sizeof(*newfd)); 
+    if(!newfd)
+        return error_tuple(env, ENOMEM);
+
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
 
-    if ((newfd = accept(socket, (struct sockaddr*)&addr, &addrlen)) < 0)
+    if ((*newfd = accept(*sock, (struct sockaddr*)&addr, &addrlen)) < 0)
         return error_tuple(env, errno);
 
-    return enif_make_tuple3(env,
-                            atom_ok,
-			    enif_make_int(env, newfd),
+    fprintf(stderr, "accept socket: %d\n", *newfd);
+    return enif_make_tuple3(env, atom_ok,
+                            enif_make_resource(env, newfd),
                             sockaddr_to_term(env, &addr, addrlen));
 }
 
@@ -534,36 +541,38 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     ErlNifBinary buffer;
     ssize_t len = 0;
+    fprintf(stderr, "*********************nif_recv\n");
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
+    fprintf(stderr, "recv socket: %d\n", *sock);
     fionread(len);
 
     if (!enif_alloc_binary(len, &buffer))
         return enif_make_badarg(env);
 
-    while (42) {
-	if ((len = recv(socket, buffer.data, (size_t) len, MSG_DONTWAIT)) >= 0)
-	    break;
+    while (42) { 
+      if ((len = recv(*sock, buffer.data, (size_t) len, MSG_DONTWAIT)) >= 0)
+        break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
+    switch (errno) {
+    case EINTR:
+        continue;
 
-	default:
-	    enif_release_binary(&buffer);
-	    return error_tuple(env, errno);
-	}
+    default:
+        enif_release_binary(&buffer);
+        return error_tuple(env, errno);
+    }
     }
 
     if (len == 0) {
-	enif_release_binary(&buffer);
-	return atom_eof;
+        enif_release_binary(&buffer);
+        return atom_eof;
     }
 
     if (len < buffer.size)
@@ -578,7 +587,7 @@ nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     int flag;
     ssize_t len = 0;
     ssize_t r = 0;
@@ -593,9 +602,9 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ERL_NIF_TERM clist;
     ErlNifBinary data;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_int(env, argv[1], &flag)
-	|| !enif_get_ssize(env, argv[2], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_int(env, argv[1], &flag) ||
+        !enif_get_ssize(env, argv[2], &len))
         return enif_make_badarg(env);
 
     fionread(len);
@@ -614,17 +623,17 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     msg.msg_controllen = sizeof(buffer);
 
     while (42) {
-	if ((r = recvmsg(socket, &msg, flag)) >= 0)
-	    break;
+        if ((r = recvmsg(*sock, &msg, flag)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
+        switch (errno) {
+        case EINTR:
+            continue;
 
-	default:
-	    enif_release_binary(&data);
-	    return error_tuple(env, errno);
-	}
+        default:
+            enif_release_binary(&data);
+            return error_tuple(env, errno);
+        }
     }
 
     if (iov.iov_len < data.size)
@@ -637,40 +646,40 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
      * http://www.kernel.org/doc/man-pages/online/pages/man3/cmsg.3.html
      */
     for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))  {
-	ERL_NIF_TERM val;
-	ERL_NIF_TERM decoded;
+        ERL_NIF_TERM val;
+        ERL_NIF_TERM decoded;
 
-	/* Ip level */
-	if ((cmsg->cmsg_level == SOL_IP &&
-	     cmsg->cmsg_type == IP_RECVERR) ||
-	    (cmsg->cmsg_level == SOL_IPV6 &&
-	     cmsg->cmsg_type == IPV6_RECVERR)) {
+        /* Ip level */
+        if ((cmsg->cmsg_level == SOL_IP &&
+             cmsg->cmsg_type == IP_RECVERR) ||
+            (cmsg->cmsg_level == SOL_IPV6 &&
+             cmsg->cmsg_type == IPV6_RECVERR)) {
 
-	    sock_err = (struct sock_extended_err*)CMSG_DATA(cmsg);
-	    decoded = enif_make_tuple7(env,
-				       atom_sock_err,
-				       enif_make_int(env, sock_err->ee_errno),
-				       enif_make_int(env, sock_err->ee_origin),
-				       enif_make_int(env, sock_err->ee_type),
-				       enif_make_int(env, sock_err->ee_code),
-				       enif_make_int(env, sock_err->ee_info),
-				       enif_make_int(env, sock_err->ee_data));
-	} else {
-	    memcpy(enif_make_new_binary(env, cmsg->cmsg_len - sizeof(struct cmsghdr), &decoded),
-		   CMSG_DATA(cmsg), cmsg->cmsg_len - sizeof(struct cmsghdr));
-	}
+            sock_err = (struct sock_extended_err*)CMSG_DATA(cmsg);
+            decoded = enif_make_tuple7(env,
+                           atom_sock_err,
+                           enif_make_int(env, sock_err->ee_errno),
+                           enif_make_int(env, sock_err->ee_origin),
+                           enif_make_int(env, sock_err->ee_type),
+                           enif_make_int(env, sock_err->ee_code),
+                           enif_make_int(env, sock_err->ee_info),
+                           enif_make_int(env, sock_err->ee_data));
+        } else {
+            memcpy(enif_make_new_binary(env, cmsg->cmsg_len - sizeof(struct cmsghdr), &decoded),
+               CMSG_DATA(cmsg), cmsg->cmsg_len - sizeof(struct cmsghdr));
+        }
 
-	val = enif_make_tuple3(env,
-			       enif_make_int(env, cmsg->cmsg_level),
-			       enif_make_int(env, cmsg->cmsg_type),
-			       decoded);
+        val = enif_make_tuple3(env,
+                       enif_make_int(env, cmsg->cmsg_level),
+                       enif_make_int(env, cmsg->cmsg_type),
+                       decoded);
         clist = enif_make_list_cell(env, val, clist);
     }
 
     return enif_make_tuple4(env,
                             atom_ok,
                             sockaddr_to_term(env, msg.msg_name, msg.msg_namelen),
-			    clist, enif_make_binary(env, &data));
+                            clist, enif_make_binary(env, &data));
 }
 
 // param 0: socket
@@ -678,15 +687,15 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_recvfrom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
     ssize_t len = 0;
 
     ErlNifBinary buffer;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
     fionread(len);
@@ -695,22 +704,21 @@ nif_recvfrom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return error_tuple(env, ENOMEM);
 
     while (42) {
-	if ((len = recvfrom(socket, buffer.data, len, MSG_DONTWAIT, (struct sockaddr*)&addr, &addrlen)) >= 0)
-	    break;
+        if ((len = recvfrom(*sock, buffer.data, len, MSG_DONTWAIT, (struct sockaddr*)&addr, &addrlen)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
-
-	default:
-	    enif_release_binary(&buffer);
-	    return error_tuple(env, errno);
-	}
+        switch (errno) {
+            case EINTR:
+                continue;
+            default:
+                enif_release_binary(&buffer);
+                return error_tuple(env, errno);
+        }
     }
 
     if (len == 0) {
-	enif_release_binary(&buffer);
-	return atom_eof;
+    enif_release_binary(&buffer);
+    return atom_eof;
     }
 
     if (len < buffer.size)
@@ -728,34 +736,33 @@ nif_recvfrom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_send(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     ErlNifBinary data;
     int flags;
     ssize_t len;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_inspect_binary(env, argv[1], &data)
-	|| !enif_get_int(env, argv[2], &flags))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_inspect_binary(env, argv[1], &data) ||
+        !enif_get_int(env, argv[2], &flags))
         return enif_make_badarg(env);
 
     flags |= MSG_NOSIGNAL;
     flags |= MSG_DONTWAIT;
 
     while (42) {
-	if ((len = send(socket, data.data, data.size, flags)) >= 0)
-	    break;
+        if ((len = send(*sock, data.data, data.size, flags)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
-	    
-	default:
-	    return error_tuple(env, errno);
-	}
+        switch (errno) {
+            case EINTR:
+                continue;
+            default:
+                return error_tuple(env, errno);
+        }
     }
 
     return enif_make_tuple2(env, atom_ok, 
-			    enif_make_sub_binary(env, argv[1], len, data.size - len));
+                enif_make_sub_binary(env, argv[1], len, data.size - len));
 }
 
 // param 0: socket
@@ -765,37 +772,36 @@ nif_send(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_sendto(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     ErlNifBinary data;
     int flags;
     ssize_t len;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_inspect_binary(env, argv[1], &data)
-	|| !enif_get_int(env, argv[2], &flags)
-	|| !term_to_sockaddr(env, argv[3], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_inspect_binary(env, argv[1], &data) ||
+        !enif_get_int(env, argv[2], &flags) ||
+        !term_to_sockaddr(env, argv[3], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     flags |= MSG_NOSIGNAL;
     flags |= MSG_DONTWAIT;
 
     while (42) {
-	if ((len = sendto(socket, data.data, data.size, flags, (struct sockaddr*) &addr, addrlen)) >= 0)
-	    break;
+        if ((len = sendto(*sock, data.data, data.size, flags, (struct sockaddr*) &addr, addrlen)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
-	    
-	default:
-	    return error_tuple(env, errno);
-	}
+        switch (errno) {
+            case EINTR:
+                continue;
+            default:
+                return error_tuple(env, errno);
+        }
     }
 
     return enif_make_tuple2(env, atom_ok, 
-			    enif_make_sub_binary(env, argv[1], len, data.size - len));
+                enif_make_sub_binary(env, argv[1], len, data.size - len));
 }
 
 // param 0: socket
@@ -803,36 +809,37 @@ nif_sendto(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_read(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     ErlNifBinary buffer;
     ssize_t len = 0;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_ssize(env, argv[1], &len))
+    fprintf(stderr, "*******************nif_read\n");
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
+    fprintf(stderr, "read socket: %d\n", *sock);
     fionread(len);
 
     if (!enif_alloc_binary(len, &buffer))
         return enif_make_badarg(env);
 
     while (42) {
-	if ((len = read(socket, buffer.data, (size_t) len)) >= 0)
-	    break;
+        if ((len = read(*sock, buffer.data, (size_t) len)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
-
-	default:
-	    enif_release_binary(&buffer);
-	    return error_tuple(env, errno);
-	}
+        switch (errno) {
+            case EINTR:
+                continue;
+            default:
+                enif_release_binary(&buffer);
+                return error_tuple(env, errno);
+        }
     }
 
     if (len == 0) {
-	enif_release_binary(&buffer);
-	return atom_eof;
+        enif_release_binary(&buffer);
+        return atom_eof;
     }
 
     if (len < buffer.size)
@@ -846,29 +853,28 @@ nif_read(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_write(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     int len;
     ErlNifBinary data;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_inspect_binary(env, argv[1], &data))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) || 
+        !enif_inspect_binary(env, argv[1], &data))
         return enif_make_badarg(env);
 
     while (42) {
-	if ((len = write(socket, data.data, data.size)) >= 0)
-	    break;
+        if ((len = write(*sock, data.data, data.size)) >= 0)
+            break;
 
-	switch (errno) {
-	case EINTR:
-	    continue;
-	    
-	default:
-	    return error_tuple(env, errno);
-	}
+        switch (errno) {
+            case EINTR:
+                continue;
+            default:
+                return error_tuple(env, errno);
+        }
     }
 
     return enif_make_tuple2(env, atom_ok, 
-			    enif_make_sub_binary(env, argv[1], len, data.size - len));
+                enif_make_sub_binary(env, argv[1], len, data.size - len));
 }
 
 /* 0: (int)socket descriptor, 1: (int)device dependent request,
@@ -877,16 +883,16 @@ nif_write(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_ioctl(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *sock;
     int req = 0;
     ErlNifBinary arg;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_int(env, argv[1], &req)
-	|| !enif_inspect_binary(env, argv[2], &arg))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_int(env, argv[1], &req) ||
+        !enif_inspect_binary(env, argv[2], &arg))
         return enif_make_badarg(env);
 
-    if (ioctl(socket, req, arg.data) < 0)
+    if (ioctl(*sock, req, arg.data) < 0)
         return error_tuple(env, errno);
 
     return enif_make_tuple2(env, atom_ok, enif_make_binary(env, &arg));
@@ -898,50 +904,50 @@ nif_ioctl(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_setsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
+    int *sock;
     int level = 0;
     int name = 0;
     ErlNifBinary val;
 
-    if (!enif_get_int(env, argv[0], &s)
-	|| !enif_get_int(env, argv[1], &level)
-	|| !enif_get_int(env, argv[2], &name)
-	|| !enif_inspect_binary(env, argv[3], &val))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_int(env, argv[1], &level) ||
+        !enif_get_int(env, argv[2], &name) ||
+        !enif_inspect_binary(env, argv[3], &val))
         return enif_make_badarg(env);
 
-    if (setsockopt(s, level, name, (void *)val.data, val.size) < 0)
+    if (setsockopt(*sock, level, name, (void *)val.data, val.size) < 0)
         return error_tuple(env, errno);
 
     return atom_ok;
 }
 
-/* 0: int socket descriptor, 1: int level,
+/* 0: resource for the  socket descriptor, 1: int level,
  * 2: int optname
  * ret: void *optval
  */
 static ERL_NIF_TERM
 nif_getsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
+    int *sock;
     int level = 0;
     int name = 0;
     socklen_t optlen = 64;
     ErlNifBinary opt, val;
 
-    if (!enif_get_int(env, argv[0], &s)
-	|| !enif_get_int(env, argv[1], &level)
-	|| !enif_get_int(env, argv[2], &name)
-	|| !enif_inspect_binary(env, argv[3], &opt)
-	|| !enif_get_uint(env, argv[4], &optlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_int(env, argv[1], &level) ||
+        !enif_get_int(env, argv[2], &name) ||
+        !enif_inspect_binary(env, argv[3], &opt) ||
+        !enif_get_uint(env, argv[4], &optlen))
         return enif_make_badarg(env);
 
     if (!enif_alloc_binary(optlen, &val))
-	return atom_error;
+        return atom_error;
 
     memcpy(val.data, opt.data, optlen > opt.size ? opt.size : optlen);
 
-    if (getsockopt(s, level, name, (void *)val.data, &optlen) < 0) {
-	enif_release_binary(&val);
+    if (getsockopt(*sock, level, name, (void *)val.data, &optlen) < 0) {
+        enif_release_binary(&val);
         return error_tuple(env, errno);
     }
 
@@ -955,20 +961,20 @@ nif_getsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_getsock_error(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
+    int *sock;
     int opt = 0;
     socklen_t optlen = sizeof(opt);
 
-    if (!enif_get_int(env, argv[0], &s))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
 
-    if (getsockopt(s, SOL_SOCKET, SO_ERROR, &opt, &optlen) < 0)
+    if (getsockopt(*sock, SOL_SOCKET, SO_ERROR, &opt, &optlen) < 0)
         return error_tuple(env, errno);
 
     if (opt != 0)
-	return enif_make_atom(env, erl_errno_id(opt));
+        return enif_make_atom(env, erl_errno_id(opt));
     else
-	return atom_ok;
+        return atom_ok;
 }
 
 /* 0: int socket descriptor
@@ -977,33 +983,33 @@ nif_getsock_error(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *socket, s;
-
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
+    int *sock, s;
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
-    s = *socket;
-    *socket = -1;
+    s = *sock;
+    *sock = -1;
+    fprintf(stderr, "socket close %d\n", s);
     if (close(s) < 0)
         return error_tuple(env, errno);
 
     return atom_ok;
 }
 
-/* 0: int socket descriptor
+/* 0: resource for the socket descriptor
  * 1: int how
  * ret: posix_error()
  */
 static ERL_NIF_TERM
 nif_shutdown(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
+    int *sock;
     int how;
 
-    if (!enif_get_int(env, argv[0], &s)
-	|| !enif_get_int(env, argv[1], &how))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
+        !enif_get_int(env, argv[1], &how))
         return enif_make_badarg(env);
 
-    if (shutdown(s, how) < 0)
+    if (shutdown(*sock, how) < 0)
         return error_tuple(env, errno);
 
     return atom_ok;
