@@ -78,6 +78,8 @@ static ERL_NIF_TERM atom_inet4;
 
 static ERL_NIF_TERM atom_sock_err;
 
+static ErlNifResourceType *rsrc_sock;
+
 // -------------------------------------------------------------------------------------------------
 // -- MISC INTERNAL HELPER FUNCTIONS
 #define enif_get_ssize enif_get_long
@@ -252,6 +254,20 @@ term_to_sockaddr(ErlNifEnv* env, ERL_NIF_TERM term, struct sockaddr* addr, sockl
     }
 }
 
+static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
+  int *pfd, fd;
+  if(!obj) {
+    return;
+  }
+  pfd = obj;
+  if(*pfd < 0) {
+    return;
+  }
+  fd = *pfd;
+  *pfd = -1;
+  close(fd);
+}
+
 // -------------------------------------------------------------------------------------------------
 // -- NIF FUNCTIONS
 int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
@@ -262,6 +278,10 @@ int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     atom_unix    = enif_make_atom(env, "unix");
     atom_inet4   = enif_make_atom(env, "inet4");
     atom_sock_err = enif_make_atom(env, "sock_err");
+    rsrc_sock     = enif_open_resource_type(env, "gen_socket", "socket_resource", rsrc_sock_dtor, ERL_NIF_RT_CREATE, 0);
+    if(!rsrc_sock) {
+        return -1;
+    }
     return 0;
 }
 
@@ -374,25 +394,30 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
     return atom_ok;
 }
-
 /*  0: procotol, 1: type, 2: family */
 static ERL_NIF_TERM
 nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s = -1;
     int family = 0;
     int type = 0;
     int protocol = 0;
     int flags = 0;
+    int *fd = 0;
 
-    if (!enif_get_int(env, argv[0], &family)
-	|| !enif_get_int(env, argv[1], &type)
-	|| !enif_get_int(env, argv[2], &protocol))
-        return enif_make_badarg(env);
+    fd = enif_alloc_resource(rsrc_sock, sizeof(*fd)); 
+    if(!fd) {
+        return error_tuple(env, ENOMEM);
+    }
+    if (!enif_get_int(env, argv[0], &family) || 
+        !enif_get_int(env, argv[1], &type) ||
+        !enif_get_int(env, argv[2], &protocol)) {
+      return enif_make_badarg(env);
+    }
 
-    s = socket(family, type, protocol);
-    if (s < 0)
+    *fd = socket(family, type, protocol);
+    if (*fd < 0) {
         return error_tuple(env, errno);
+    }
 
     flags = fcntl(s, F_GETFL, 0);
     flags |= O_NONBLOCK;
@@ -400,7 +425,7 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_int(env, s));
+           enif_make_int(env, *fd));
 }
 
 /*  0: netnsfile, 1: procotol, 2: type, 3: family */
@@ -419,12 +444,13 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     sigset_t intmask, oldmask;
     int old_nsfd;
 
-    if (!enif_inspect_binary(env, argv[0], &netnsfile) ||
-	netnsfile.size > PATH_MAX -1
-	|| !enif_get_int(env, argv[1], &family)
-	|| !enif_get_int(env, argv[2], &type)
-	|| !enif_get_int(env, argv[3], &protocol))
+    if (!enif_inspect_binary(env, argv[0], &netnsfile) || 
+        netnsfile.size > PATH_MAX -1 || 
+        !enif_get_int(env, argv[1], &family) || 
+        !enif_get_int(env, argv[2], &type) || 
+        !enif_get_int(env, argv[3], &protocol)) {
         return enif_make_badarg(env);
+    }
 
     memcpy(filename, netnsfile.data, netnsfile.size);
     filename[netnsfile.size] = '\0';
@@ -432,8 +458,8 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return error_tuple(env, errno);
 
     if ((old_nsfd = open("/proc/self/ns/net", O_RDONLY)) < 0) {
-	errsv = errno;
-	close(nsfd);
+	      errsv = errno;
+	      close(nsfd);
         return error_tuple(env, errsv);
     }
 
