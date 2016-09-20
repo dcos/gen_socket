@@ -255,17 +255,17 @@ term_to_sockaddr(ErlNifEnv* env, ERL_NIF_TERM term, struct sockaddr* addr, sockl
 }
 
 static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
-  int *pfd, fd;
+  int *socket, s;
   if(!obj) {
     return;
   }
-  pfd = obj;
-  if(*pfd < 0) {
+  socket = obj;
+  if(*socket < 0) {
     return;
   }
-  fd = *pfd;
-  *pfd = -1;
-  close(fd);
+  s = *socket;
+  *socket = -1;
+  close(s);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -320,14 +320,14 @@ nif_decode_sockaddr(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_getsockname(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *socket;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
         return enif_make_badarg(env);
 
-    if (getsockname(socket, (struct sockaddr*) &addr, &addrlen) != 0)
+    if (getsockname(*socket, (struct sockaddr*) &addr, &addrlen) != 0)
         return error_tuple(env, errno);
 
     return sockaddr_to_term(env, &addr, addrlen);
@@ -337,14 +337,14 @@ nif_getsockname(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_getpeername(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *socket;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
         return enif_make_badarg(env);
 
-    if (getpeername(socket, (struct sockaddr*) &addr, &addrlen) != 0)
+    if (getpeername(*socket, (struct sockaddr*) &addr, &addrlen) != 0)
         return error_tuple(env, errno);
 
     return sockaddr_to_term(env, &addr, addrlen);
@@ -355,18 +355,18 @@ nif_getpeername(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *socket;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) || 
+        !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
         return error_tuple(env, E2BIG);
 
-    if (bind(socket, (struct sockaddr*) &addr, addrlen))
+    if (bind(*socket, (struct sockaddr*) &addr, addrlen))
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -377,18 +377,18 @@ nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *socket;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) ||
+        !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
         return error_tuple(env, E2BIG);
 
-    if (connect(socket, (struct sockaddr*) &addr, addrlen))
+    if (connect(*socket, (struct sockaddr*) &addr, addrlen))
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -496,14 +496,14 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_listen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int socket;
+    int *socket;
     int backlog = 5;
 
-    if (!enif_get_int(env, argv[0], &socket)
-	|| !enif_get_int(env, argv[1], &backlog))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket) ||
+        !enif_get_int(env, argv[1], &backlog))
         return enif_make_badarg(env);
 
-    if (listen(socket, backlog) < 0)
+    if (listen(*socket, backlog) < 0)
         return error_tuple(env, errno);
 
     return atom_ok;
@@ -977,12 +977,12 @@ nif_getsock_error(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *fd, s;
+    int *socket, s;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&fd))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&socket))
         return enif_make_badarg(env);
-    s = *fd;
-    *fd = -1;
+    s = *socket;
+    *socket = -1;
     if (close(s) < 0)
         return error_tuple(env, errno);
 
