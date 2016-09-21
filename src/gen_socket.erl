@@ -59,8 +59,9 @@
 -define(IS_SOCKET(Term),
   (is_record(Term, gen_socket) andalso
    is_port(Term#gen_socket.port))).
+
 -define(IS_NIF_SOCKET(Term),
-  (?IS_SOCKET(Term))).
+    (?IS_SOCKET(Term) orelse is_binary(Term))).
 
 -define(IS_TIMEOUT(Term),
     ((Term == infinity) orelse (is_integer(Term) andalso Term >= 0))).
@@ -115,6 +116,7 @@ init() ->
 
 %% internal accessors
 -compile([{inline, nif_socket_of/1}, {inline, port_of/1}]).
+nif_socket_of(Fd) when is_binary(Fd) -> Fd;
 nif_socket_of(#gen_socket{fd = Fd}) -> Fd.
 port_of(#gen_socket{port = Port}) -> Port.
 
@@ -134,6 +136,8 @@ controlling_process(Socket, NewOwner) ->
     error(badarg, [Socket, NewOwner]).
 
 -spec close(socket()) -> ok.
+close(Socket) when is_binary(Socket) ->
+    nif_close(Socket);
 close(Socket) when ?IS_SOCKET(Socket) ->
     erlang:port_close(port_of(Socket)),
     nif_close(nif_socket_of(Socket));

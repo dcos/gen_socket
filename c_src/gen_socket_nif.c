@@ -361,8 +361,8 @@ nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) || 
-        !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
@@ -382,9 +382,10 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
+    fprintf(stderr, "************ nif_connect start\n");
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
@@ -392,7 +393,7 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
     if (connect(*sock, (struct sockaddr*) &addr, addrlen))
         return error_tuple(env, errno);
-
+    fprintf(stderr, "************ nif_connect passed\n");
     return atom_ok;
 }
 /*  0: procotol, 1: type, 2: family */
@@ -409,9 +410,9 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if(!sock) {
         return error_tuple(env, ENOMEM);
     }
-    if (!enif_get_int(env, argv[0], &family) || 
-        !enif_get_int(env, argv[1], &type) ||
-        !enif_get_int(env, argv[2], &protocol)) {
+    if (!enif_get_int(env, argv[0], &family)
+    || !enif_get_int(env, argv[1], &type) 
+    || !enif_get_int(env, argv[2], &protocol)) {
       return enif_make_badarg(env);
     }
 
@@ -450,11 +451,11 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if(!sock) {
         return error_tuple(env, ENOMEM);
     }
-    if (!enif_inspect_binary(env, argv[0], &netnsfile) || 
-        netnsfile.size > PATH_MAX -1 || 
-        !enif_get_int(env, argv[1], &family) || 
-        !enif_get_int(env, argv[2], &type) || 
-        !enif_get_int(env, argv[3], &protocol)) {
+    if (!enif_inspect_binary(env, argv[0], &netnsfile)
+    || netnsfile.size > PATH_MAX -1
+    || !enif_get_int(env, argv[1], &family)
+    || !enif_get_int(env, argv[2], &type) 
+    || !enif_get_int(env, argv[3], &protocol)) {
         return enif_make_badarg(env);
     }
 
@@ -503,8 +504,8 @@ nif_listen(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int *sock;
     int backlog = 5;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &backlog))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &backlog))
         return enif_make_badarg(env);
 
     if (listen(*sock, backlog) < 0)
@@ -547,8 +548,8 @@ nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ErlNifBinary buffer;
     ssize_t len = 0;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
     fionread(*sock, len);
@@ -602,9 +603,9 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ERL_NIF_TERM clist;
     ErlNifBinary data;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &flag) ||
-        !enif_get_ssize(env, argv[2], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &flag)
+    || !enif_get_ssize(env, argv[2], &len))
         return enif_make_badarg(env);
 
     fionread(*sock, len);
@@ -694,8 +695,8 @@ nif_recvfrom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
     ErlNifBinary buffer;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
     fionread(*sock, len);
@@ -741,9 +742,9 @@ nif_send(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int flags;
     ssize_t len;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_inspect_binary(env, argv[1], &data) ||
-        !enif_get_int(env, argv[2], &flags))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_inspect_binary(env, argv[1], &data)
+    || !enif_get_int(env, argv[2], &flags))
         return enif_make_badarg(env);
 
     flags |= MSG_NOSIGNAL;
@@ -779,12 +780,11 @@ nif_sendto(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_inspect_binary(env, argv[1], &data) ||
-        !enif_get_int(env, argv[2], &flags) ||
-        !term_to_sockaddr(env, argv[3], (struct sockaddr*) &addr, &addrlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_inspect_binary(env, argv[1], &data)
+    || !enif_get_int(env, argv[2], &flags)
+    || !term_to_sockaddr(env, argv[3], (struct sockaddr*) &addr, &addrlen))
         return enif_make_badarg(env);
-
     flags |= MSG_NOSIGNAL;
     flags |= MSG_DONTWAIT;
 
@@ -813,8 +813,8 @@ nif_read(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ErlNifBinary buffer;
     ssize_t len = 0;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
     fionread(*sock, len);
@@ -856,8 +856,8 @@ nif_write(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int len;
     ErlNifBinary data;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) || 
-        !enif_inspect_binary(env, argv[1], &data))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_inspect_binary(env, argv[1], &data))
         return enif_make_badarg(env);
 
     while (42) {
@@ -886,9 +886,9 @@ nif_ioctl(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int req = 0;
     ErlNifBinary arg;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &req) ||
-        !enif_inspect_binary(env, argv[2], &arg))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &req)
+    || !enif_inspect_binary(env, argv[2], &arg))
         return enif_make_badarg(env);
 
     if (ioctl(*sock, req, arg.data) < 0)
@@ -908,10 +908,10 @@ nif_setsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int name = 0;
     ErlNifBinary val;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &level) ||
-        !enif_get_int(env, argv[2], &name) ||
-        !enif_inspect_binary(env, argv[3], &val))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &level)
+    || !enif_get_int(env, argv[2], &name)
+    || !enif_inspect_binary(env, argv[3], &val))
         return enif_make_badarg(env);
 
     if (setsockopt(*sock, level, name, (void *)val.data, val.size) < 0)
@@ -933,11 +933,11 @@ nif_getsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     socklen_t optlen = 64;
     ErlNifBinary opt, val;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &level) ||
-        !enif_get_int(env, argv[2], &name) ||
-        !enif_inspect_binary(env, argv[3], &opt) ||
-        !enif_get_uint(env, argv[4], &optlen))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &level)
+    || !enif_get_int(env, argv[2], &name)
+    || !enif_inspect_binary(env, argv[3], &opt)
+    || !enif_get_uint(env, argv[4], &optlen))
         return enif_make_badarg(env);
 
     if (!enif_alloc_binary(optlen, &val))
@@ -1003,8 +1003,8 @@ nif_shutdown(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int *sock;
     int how;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
-        !enif_get_int(env, argv[1], &how))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
+    || !enif_get_int(env, argv[1], &how))
         return enif_make_badarg(env);
 
     if (shutdown(*sock, how) < 0)
