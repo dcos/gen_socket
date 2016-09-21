@@ -90,21 +90,22 @@ error_tuple(ErlNifEnv *env, int errnum)
     return enif_make_tuple2(env, atom_error, enif_make_atom(env, erl_errno_id(errnum)));
 }
 
-#define fionread(len)                    \
-    do {                        \
-    if (len < 0) {                    \
-        int i;                    \
-                                \
-        if (ioctl(socket, FIONREAD, &i) < 0)    \
-        return error_tuple(env, errno);        \
-        else                    \
-        len = i;                \
-    }                        \
-                            \
-    if (len == 0)                    \
-        len = 1024;                    \
-    if (len > SSIZE_MAX)                \
-        len = SSIZE_MAX;                \
+#define fionread(sock, len)\
+    do {\
+    if (len < 0) {\
+        int i;\
+        if (ioctl((sock), FIONREAD, &i) < 0) {\
+            return error_tuple(env, errno);\
+        } else {\
+            len = i;\
+        }\
+    }\
+    if (len == 0) {\
+        len = 1024;\
+    }\
+    if (len > SSIZE_MAX) {\
+        len = SSIZE_MAX;\
+    }\
     } while (0)
 
 // -------------------------------------------------------------------------------------------------
@@ -536,6 +537,7 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
                             sockaddr_to_term(env, &addr, addrlen));
 }
 
+
 // param 0: socket
 // param 1: number of bytes to receive, determined automatically if negative
 static ERL_NIF_TERM
@@ -544,14 +546,12 @@ nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int *sock;
     ErlNifBinary buffer;
     ssize_t len = 0;
-    fprintf(stderr, "*********************nif_recv\n");
 
     if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
         !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
-    fprintf(stderr, "recv socket: %d\n", *sock);
-    fionread(len);
+    fionread(*sock, len);
 
     if (!enif_alloc_binary(len, &buffer))
         return enif_make_badarg(env);
@@ -607,7 +607,7 @@ nif_recvmsg(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         !enif_get_ssize(env, argv[2], &len))
         return enif_make_badarg(env);
 
-    fionread(len);
+    fionread(*sock, len);
 
     if (!enif_alloc_binary(len, &data))
         return error_tuple(env, ENOMEM);
@@ -698,7 +698,7 @@ nif_recvfrom(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
-    fionread(len);
+    fionread(*sock, len);
 
     if (!enif_alloc_binary(len, &buffer))
         return error_tuple(env, ENOMEM);
@@ -813,16 +813,15 @@ nif_read(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     ErlNifBinary buffer;
     ssize_t len = 0;
 
-    fprintf(stderr, "*******************nif_read\n");
     if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock) ||
         !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
 
-    fprintf(stderr, "read socket: %d\n", *sock);
-    fionread(len);
+    fionread(*sock, len);
 
-    if (!enif_alloc_binary(len, &buffer))
+    if (!enif_alloc_binary(len, &buffer)) {
         return enif_make_badarg(env);
+    }
 
     while (42) {
         if ((len = read(*sock, buffer.data, (size_t) len)) >= 0)
@@ -988,7 +987,6 @@ nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_badarg(env);
     s = *sock;
     *sock = -1;
-    fprintf(stderr, "socket close %d\n", s);
     if (close(s) < 0)
         return error_tuple(env, errno);
 
@@ -1015,6 +1013,20 @@ nif_shutdown(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return atom_ok;
 }
 
+/* 0: int socket descriptor
+ * ret: posix_error()
+ */
+static ERL_NIF_TERM
+nif_getfd(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    int *sock;
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
+        return enif_make_badarg(env);
+    return enif_make_tuple2(env, atom_ok,
+                            enif_make_resource(env, sock));
+}
+
+
 static ErlNifFunc nif_funcs[] = {
     {"nif_encode_sockaddr", 1, nif_encode_sockaddr},
     {"nif_decode_sockaddr", 1, nif_decode_sockaddr},
@@ -1038,7 +1050,7 @@ static ErlNifFunc nif_funcs[] = {
     {"nif_socketat",        4, nif_socketat},
     {"nif_listen",          2, nif_listen},
     {"nif_shutdown",        2, nif_shutdown},
-    {"nif_close",           1, nif_close}
+    {"nif_close",           1, nif_close},
 };
 
 ERL_NIF_INIT(gen_socket, nif_funcs, load, NULL, NULL, NULL)
