@@ -53,12 +53,12 @@ sync_connect(ClientSocket, ServerAddress, Timeout) ->
 
 %% -------------------------------------------------------------------------------------------------
 %% -- Common Test Callbacks
-all() ->[client_tcp_recv].
-    %[address_encoding, getsocktype, getsockname,
-    % async_connect, async_connect_econnrefused,
-    % enotconn_errors, socket_options,
-    % client_tcp_recv, client_tcp_read, client_udp_recvfrom,
-    % client_tcp_send, client_tcp_write, client_udp_sendto].
+all() ->
+    [address_encoding, getsocktype, getsockname,
+     async_connect, async_connect_econnrefused,
+     enotconn_errors, socket_options,
+     client_tcp_recv, client_tcp_read, client_udp_recvfrom,
+     client_tcp_send, client_tcp_write, client_udp_sendto].
 
 %% -------------------------------------------------------------------------------------------------
 %% -- Test Cases

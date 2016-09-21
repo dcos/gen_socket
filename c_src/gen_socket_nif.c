@@ -382,7 +382,6 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int *sock;
     struct sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
-    fprintf(stderr, "************ nif_connect start\n");
 
     if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
     || !term_to_sockaddr(env, argv[1], (struct sockaddr*) &addr, &addrlen))
@@ -391,9 +390,9 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (addrlen > sizeof(addr))
         return error_tuple(env, E2BIG);
 
-    if (connect(*sock, (struct sockaddr*) &addr, addrlen))
+    if (connect(*sock, (struct sockaddr*) &addr, addrlen)) {
         return error_tuple(env, errno);
-    fprintf(stderr, "************ nif_connect passed\n");
+    }
     return atom_ok;
 }
 /*  0: procotol, 1: type, 2: family */
@@ -551,7 +550,6 @@ nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
     || !enif_get_ssize(env, argv[1], &len))
         return enif_make_badarg(env);
-
     fionread(*sock, len);
 
     if (!enif_alloc_binary(len, &buffer))
@@ -897,7 +895,7 @@ nif_ioctl(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_tuple2(env, atom_ok, enif_make_binary(env, &arg));
 }
 
-/* 0: int socket descriptor, 1: int level,
+/* 0: socket resource, 1: int level,
  * 2: int optname, 3: void *optval
  */
 static ERL_NIF_TERM
@@ -954,7 +952,7 @@ nif_getsockopt(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_binary(env, &val);
 }
 
-/* 0: int socket descriptor
+/* 0: socket resource
  * ret: posix_error()
  */
 static ERL_NIF_TERM
@@ -976,7 +974,7 @@ nif_getsock_error(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return atom_ok;
 }
 
-/* 0: int socket descriptor
+/* 0: socket resource
  * ret: posix_error()
  */
 static ERL_NIF_TERM
@@ -1013,8 +1011,8 @@ nif_shutdown(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return atom_ok;
 }
 
-/* 0: int socket descriptor
- * ret: posix_error()
+/* 0: socket resource
+ * ret: {ok, fd} | badarg
  */
 static ERL_NIF_TERM
 nif_getfd(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
@@ -1023,7 +1021,7 @@ nif_getfd(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock))
         return enif_make_badarg(env);
     return enif_make_tuple2(env, atom_ok,
-                            enif_make_resource(env, sock));
+                            enif_make_int(env, *sock));
 }
 
 
@@ -1051,6 +1049,7 @@ static ErlNifFunc nif_funcs[] = {
     {"nif_listen",          2, nif_listen},
     {"nif_shutdown",        2, nif_shutdown},
     {"nif_close",           1, nif_close},
+    {"nif_getfd",           1, nif_getfd},
 };
 
 ERL_NIF_INIT(gen_socket, nif_funcs, load, NULL, NULL, NULL)

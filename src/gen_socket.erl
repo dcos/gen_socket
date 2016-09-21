@@ -158,7 +158,8 @@ shutdown(Socket, How) ->
 socket(Family0, Type0, Protocol0) ->
     raw_socket(Family0, Type0, Protocol0,
          fun(Family, Type, Protocol, Fd) ->
-           CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [Fd])),
+           {ok, FdNum} = nif_getfd(Fd),
+           CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [FdNum])),
            Port = open_port({spawn_driver, CmdStr}, [binary]),
            Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
            erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
@@ -190,7 +191,8 @@ raw_socket(Family, Type, Protocol, _PostFun) ->
 socketat(NetNsFile0, Family0, Type0, Protocol0) ->
     raw_socketat(NetNsFile0, Family0, Type0, Protocol0,
      fun(_, Family, Type, Protocol, Fd) ->
-       CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [Fd])),
+       {ok, FdNum} = nif_getfd(Fd),
+       CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [FdNum])),
        Port = open_port({spawn_driver, CmdStr}, [binary]),
        Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
        erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
@@ -419,6 +421,8 @@ nif_socket(_Family, _Type, _Protocol) ->
 nif_socketat(_NetNsFile, _Family, _Type, _Protocol) ->
     error(nif_not_loaded).
 nif_close(_NifSocket) ->
+    error(nif_not_loaded).
+nif_getfd(_NifSocket) ->
     error(nif_not_loaded).
 nif_getsockname(_NifSocket) ->
     error(nif_not_loaded).

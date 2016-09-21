@@ -184,7 +184,6 @@ gs_call_poll_input(GsState* state, char* buf, DRV_SIZE_T len, char** rbuf, DRV_S
     int ei_version;
     int ei_idx = 0;
     int set;
-
     if (ei_decode_version(buf, &ei_idx, &ei_version)
 	|| ei_decode_boolean(buf, &ei_idx, &set))
 	    return DRV_CALL_BADARG;
@@ -226,7 +225,6 @@ gs_start(ErlDrvPort port, char* command_str)
     }
     state->drv_port = port;
     state->socket_len = 0;
-
     // parse domain, type, protocol from argument string
     if (sscanf(command_str, "gen_socket %d", &state->fd) == EOF) {
 	    driver_free(state);
