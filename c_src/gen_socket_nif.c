@@ -35,6 +35,7 @@
 #  define _GNU_SOURCE
 #endif
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -256,17 +257,17 @@ term_to_sockaddr(ErlNifEnv* env, ERL_NIF_TERM term, struct sockaddr* addr, sockl
 }
 
 static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
-  int *sock, s;
-  if(!obj) {
-    return;
-  }
-  sock = obj;
-  s = *sock;
-  *sock = -1;
-  if(s < 0) {
-    return;
-  }
-  close(s);
+    int *sock, s;
+    if(!obj) {
+        return;
+    }
+    sock = obj;
+    s = *sock;
+    *sock = -1;
+    if(s < 0) {
+        return;
+    }
+    close(s);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -281,6 +282,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     atom_sock_err = enif_make_atom(env, "sock_err");
     rsrc_sock     = enif_open_resource_type(env, "gen_socket", "socket_resource", rsrc_sock_dtor, ERL_NIF_RT_CREATE, 0);
     if(!rsrc_sock) {
+        enif_raise_exception(env, enif_make_atom(env, "error_enif_open_resource_type"));
         return -1;
     }
     return 0;
@@ -365,6 +367,7 @@ nif_bind(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
+        //TODO: should be EINVAL
         return error_tuple(env, E2BIG);
 
     if (bind(*sock, (struct sockaddr*) &addr, addrlen))
@@ -387,6 +390,7 @@ nif_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return enif_make_badarg(env);
 
     if (addrlen > sizeof(addr))
+        //TODO: should be EINVAL
         return error_tuple(env, E2BIG);
 
     if (connect(*sock, (struct sockaddr*) &addr, addrlen)) {
