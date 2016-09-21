@@ -263,7 +263,6 @@ static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
   sock = obj;
   s = *sock;
   *sock = -1;
-  fprintf(stderr, "rsrc_sock_dtor %d\n", s);
   if(s < 0) {
     return;
   }
@@ -420,7 +419,6 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (*sock < 0) {
         return error_tuple(env, errno);
     }
-    fprintf(stderr, "new socket: %d\n", *sock);
 
     flags = fcntl(*sock, F_GETFL, 0);
     flags |= O_NONBLOCK;
@@ -478,7 +476,6 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
     setns(nsfd, CLONE_NEWNET);
     *sock = socket(family, type, protocol);
-    fprintf(stderr, "new socket: %d\n", *sock);
     errsv = errno;
     setns(old_nsfd, CLONE_NEWNET);
 
@@ -539,7 +536,6 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if ((*newfd = accept(*sock, (struct sockaddr*)&addr, &addrlen)) < 0)
         return error_tuple(env, errno);
 
-    fprintf(stderr, "accept socket: %d\n", *newfd);
     term = enif_make_resource(env, newfd);
     enif_release_resource(newfd);
     return enif_make_tuple3(env, atom_ok,
