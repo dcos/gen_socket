@@ -58,7 +58,8 @@ all() ->
      async_connect, async_connect_econnrefused,
      enotconn_errors, socket_options,
      client_tcp_recv, client_tcp_read, client_udp_recvfrom,
-     client_tcp_send, client_tcp_write, client_udp_sendto].
+     client_tcp_send, client_tcp_write, client_udp_sendto,
+     test_resource_cleanup].
 
 %% -------------------------------------------------------------------------------------------------
 %% -- Test Cases
@@ -309,6 +310,7 @@ client_tcp_write(_Config) ->
 				 gen_tcp:recv(ServerSocket, byte_size(TestString), 50))
                   end, TestStrings).
 
+
 client_udp_sendto(_Config) ->
     TestStrings = [<<"test">>, <<"test test">>],
 
@@ -329,3 +331,14 @@ client_udp_sendto(_Config) ->
                       ?MATCH({ok, {ClientIP, ClientPort, TestString}},
                              gen_udp:recv(ServerSocket, byte_size(TestString), 1000))
                   end, TestStrings).
+
+test_resource_cleanup(_Config) ->
+  alloc_and_gc_sockets(1024*4, gen_socket:socket(inet, dgram, udp)).
+
+alloc_and_gc_sockets(0, _) -> ok;
+alloc_and_gc_sockets(N, _) ->
+  erlang:garbage_collect(self()),
+  {ok, Socket} = gen_socket:socket(inet, dgram, udp),
+  alloc_and_gc_sockets(N - 1, Socket).
+
+

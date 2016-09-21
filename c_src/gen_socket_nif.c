@@ -403,7 +403,8 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int type = 0;
     int protocol = 0;
     int flags = 0;
-    int *sock = 0;
+    int *sock;
+    ERL_NIF_TERM term;
 
     sock = enif_alloc_resource(rsrc_sock, sizeof(*sock)); 
     if(!sock) {
@@ -425,9 +426,11 @@ nif_socket(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     flags |= O_NONBLOCK;
     (void)fcntl(*sock, F_SETFL, flags);
 
+    term = enif_make_resource(env, sock);
+    enif_release_resource(sock);
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_resource(env, sock));
+           term);
 }
 
 /*  0: netnsfile, 1: procotol, 2: type, 3: family */
@@ -444,7 +447,8 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     int nsfd = 0;
     sigset_t intmask, oldmask;
     int old_nsfd;
-    int *sock = 0;
+    int *sock;
+    ERL_NIF_TERM term;
 
     sock = enif_alloc_resource(rsrc_sock, sizeof(*sock)); 
     if(!sock) {
@@ -490,9 +494,11 @@ nif_socketat(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     flags |= O_NONBLOCK;
     (void)fcntl(*sock, F_SETFL, flags);
 
+    term = enif_make_resource(env, sock);
+    enif_release_resource(sock);
     return enif_make_tuple(env, 2,
            atom_ok,
-           enif_make_resource(env, sock));
+           term);
 }
 
 // param 0: socket
@@ -519,6 +525,8 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int *sock, *newfd;
     struct sockaddr_storage addr;
+    ERL_NIF_TERM term;
+
     socklen_t addrlen = sizeof(addr);
 
     newfd = enif_alloc_resource(rsrc_sock, sizeof(*newfd)); 
@@ -532,8 +540,10 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         return error_tuple(env, errno);
 
     fprintf(stderr, "accept socket: %d\n", *newfd);
+    term = enif_make_resource(env, newfd);
+    enif_release_resource(newfd);
     return enif_make_tuple3(env, atom_ok,
-                            enif_make_resource(env, newfd),
+                            term,
                             sockaddr_to_term(env, &addr, addrlen));
 }
 
