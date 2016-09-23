@@ -266,6 +266,7 @@ static void rsrc_sock_dtor(ErlNifEnv* env, void* obj) {
     if(s < 0) {
         return;
     }
+    fprintf(stderr, "rsrc_sock_dtor %p %d\n", sock, (int)s);
     close(s);
 }
 
@@ -552,13 +553,18 @@ nif_accept(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ERL_NIF_TERM
 nif_recv(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int *sock;
+    int *sock = 0;
     ErlNifBinary buffer;
     ssize_t len = 0;
 
-    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)
-    || !enif_get_ssize(env, argv[1], &len))
+    if (!enif_get_resource(env, argv[0], rsrc_sock, (void**)&sock)) {
+        fprintf(stderr, "bad argument 0\n");
         return enif_make_badarg(env);
+    }
+    if(!enif_get_ssize(env, argv[1], &len)) {
+        fprintf(stderr, "bad argument 1\n");
+        return enif_make_badarg(env);
+    }
     fionread(*sock, len);
 
     if (!enif_alloc_binary(len, &buffer))

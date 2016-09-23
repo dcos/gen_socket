@@ -59,7 +59,7 @@ all() ->
      enotconn_errors, socket_options,
      client_tcp_recv, client_tcp_read, client_udp_recvfrom,
      client_tcp_send, client_tcp_write, client_udp_sendto,
-     test_resource_cleanup].
+     test_resource_cleanup, client_tcp_recv_fd].
 
 %% -------------------------------------------------------------------------------------------------
 %% -- Test Cases
@@ -207,6 +207,37 @@ client_tcp_recv(_Config) ->
 			  wait_for_input(ClientSocket, 20),
 			  ?MATCH({ok, TestString}, gen_socket:recv(ClientSocket, byte_size(TestString)))
                   end, TestStrings).
+
+client_tcp_recv_fd(_Config) ->
+    TestStrings = [<<"test">>, <<"test test">>],
+
+    %% open server socket
+    {ok, ServerAcceptSocket} = gen_tcp:listen(0, [{ip, {127,0,0,1}}]),
+    {ok, ServerPort} = inet:port(ServerAcceptSocket),
+    ServerAddress = {inet4, {127,0,0,1}, ServerPort},
+
+    %% send test strings to our client socket in a separate process once it connects
+    _ServerProc = spawn_link(fun () ->
+                                 {ok, ServerSocket} = gen_tcp:accept(ServerAcceptSocket),
+                                 lists:foreach(fun (TestString) ->
+                                                   ok = gen_tcp:send(ServerSocket, TestString)
+                                               end, TestStrings)
+                             end),
+
+    %% open and connect client socket
+    {ok, ClientSocket} = gen_socket:socket(inet, stream, tcp),
+    ok = sync_connect(ClientSocket, ServerAddress, 160),
+
+    ?MATCH(ServerAddress, gen_socket:getpeername(ClientSocket)),
+
+    %% receive test strings using the client socket
+    {gen_socket,_,Fd,_,_,_} = ClientSocket,
+    true = is_binary(Fd),
+    lists:foreach(fun (TestString) ->
+			  wait_for_input(ClientSocket, 20),
+			  ?MATCH({ok, TestString}, gen_socket:recv(Fd, byte_size(TestString)))
+                  end, TestStrings).
+
 
 client_tcp_read(_Config) ->
     TestStrings = [<<"test">>, <<"test test">>],

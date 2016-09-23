@@ -43,7 +43,7 @@
          send/2, sendto/3,
          read/1, read/2, write/2,
          listen/2, ioctl/3,
-         shutdown/2, close/1]).
+         shutdown/2, close/1, getfd/1]).
 -export([family/1, type/1, protocol/1, arphdr/1]).
 
 %% for debugging/testing only
@@ -153,6 +153,8 @@ shutdown(Socket, read_write) when ?IS_NIF_SOCKET(Socket) ->
     nif_shutdown(nif_socket_of(Socket), 2);
 shutdown(Socket, How) ->
     error(badarg, [Socket, How]).
+
+getfd(Socket) -> nif_getfd(nif_socket_of(Socket)).
 
 -spec socket(term(), term(), term()) -> {ok, socket()} | {error, term()}.
 socket(Family0, Type0, Protocol0) ->
@@ -335,7 +337,7 @@ output_event(Socket, Set) ->
 recv(Socket) when ?IS_NIF_SOCKET(Socket) ->
     nif_recv(nif_socket_of(Socket), -1).
 
--spec recv(socket(), non_neg_integer()) -> {ok, binary()} | {error, closed} | {error, posix_error()}.
+-spec recv(socket(), binary()) -> {ok, binary()} | {error, closed} | {error, posix_error()}.
 recv(Socket, Length) when ?IS_NIF_SOCKET(Socket), is_integer(Length), Length > 0 ->
     nif_recv(nif_socket_of(Socket), Length);
 recv(Socket, Length) ->
