@@ -56,9 +56,10 @@ sync_connect(ClientSocket, ServerAddress, Timeout) ->
 all() ->
     [address_encoding, getsocktype, getsockname,
      async_connect, async_connect_econnrefused,
-     enotconn_errors, socket_options, getsockfd,
+     enotconn_errors, socket_options,
      client_tcp_recv, client_tcp_read, client_udp_recvfrom,
-     client_tcp_send, client_tcp_write, client_udp_sendto].
+     client_tcp_send, client_tcp_write, client_udp_sendto,
+     test_resource_cleanup, client_tcp_recv_fd].
 
 %% -------------------------------------------------------------------------------------------------
 %% -- Test Cases
@@ -88,20 +89,6 @@ getsocktype(_Config) ->
                      {ok, Socket} = gen_socket:socket(Family, Type, Protocol),
                      ?MATCH({Family, Type, Protocol}, gen_socket:getsocktype(Socket))
                  end, Sockets).
-
-getsockfd(_Config) ->
-    Sockets = [{inet, stream, ip},
-               {inet, dgram, ip},
-               {inet, stream, tcp},
-               {inet, dgram, udp},
-               {unix, stream, ip},
-               {unix, dgram, ip}],
-
-    lists:foreach(fun ({Family, Type, Protocol}) ->
-			  {ok, Socket} = gen_socket:socket(Family, Type, Protocol),
-			  Fd = gen_socket:getfd(Socket),
-			  ?ASSERT(is_integer(Fd) andalso Fd > 0)
-		  end, Sockets).
 
 getsockname(_Config) ->
     Sockets = [{inet, stream, tcp, {inet4, {127,0,0,1}, 8900}},
@@ -221,6 +208,37 @@ client_tcp_recv(_Config) ->
 			  ?MATCH({ok, TestString}, gen_socket:recv(ClientSocket, byte_size(TestString)))
                   end, TestStrings).
 
+client_tcp_recv_fd(_Config) ->
+    TestStrings = [<<"test">>, <<"test test">>],
+
+    %% open server socket
+    {ok, ServerAcceptSocket} = gen_tcp:listen(0, [{ip, {127,0,0,1}}]),
+    {ok, ServerPort} = inet:port(ServerAcceptSocket),
+    ServerAddress = {inet4, {127,0,0,1}, ServerPort},
+
+    %% send test strings to our client socket in a separate process once it connects
+    _ServerProc = spawn_link(fun () ->
+                                 {ok, ServerSocket} = gen_tcp:accept(ServerAcceptSocket),
+                                 lists:foreach(fun (TestString) ->
+                                                   ok = gen_tcp:send(ServerSocket, TestString)
+                                               end, TestStrings)
+                             end),
+
+    %% open and connect client socket
+    {ok, ClientSocket} = gen_socket:socket(inet, stream, tcp),
+    ok = sync_connect(ClientSocket, ServerAddress, 160),
+
+    ?MATCH(ServerAddress, gen_socket:getpeername(ClientSocket)),
+
+    %% receive test strings using the client socket
+    {gen_socket,_,Fd,_,_,_} = ClientSocket,
+    true = is_binary(Fd),
+    lists:foreach(fun (TestString) ->
+			  wait_for_input(ClientSocket, 20),
+			  ?MATCH({ok, TestString}, gen_socket:recv(Fd, byte_size(TestString)))
+                  end, TestStrings).
+
+
 client_tcp_read(_Config) ->
     TestStrings = [<<"test">>, <<"test test">>],
 
@@ -323,6 +341,7 @@ client_tcp_write(_Config) ->
 				 gen_tcp:recv(ServerSocket, byte_size(TestString), 50))
                   end, TestStrings).
 
+
 client_udp_sendto(_Config) ->
     TestStrings = [<<"test">>, <<"test test">>],
 
@@ -343,3 +362,14 @@ client_udp_sendto(_Config) ->
                       ?MATCH({ok, {ClientIP, ClientPort, TestString}},
                              gen_udp:recv(ServerSocket, byte_size(TestString), 1000))
                   end, TestStrings).
+
+test_resource_cleanup(_Config) ->
+  alloc_and_gc_sockets(1024*4, gen_socket:socket(inet, dgram, udp)).
+
+alloc_and_gc_sockets(0, _) -> ok;
+alloc_and_gc_sockets(N, _) ->
+  erlang:garbage_collect(self()),
+  {ok, Socket} = gen_socket:socket(inet, dgram, udp),
+  alloc_and_gc_sockets(N - 1, Socket).
+
+

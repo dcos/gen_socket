@@ -35,16 +35,15 @@
 -on_load(init/0).
 
 -export([controlling_process/2, socket/3, socketat/4,
-	 raw_socket/3, raw_socketat/4, getsocktype/1,
-	 getsockopt/3, getsockopt/4, getsockopt/5, setsockopt/4,
+         raw_socket/3, raw_socketat/4, getsocktype/1,
+         getsockopt/3, getsockopt/4, getsockopt/5, setsockopt/4,
          getsockname/1, getpeername/1, bind/2, connect/2, accept/1,
-	 input_event/2, output_event/2,
+         input_event/2, output_event/2,
          recv/1, recv/2, recvmsg/2, recvmsg/3, recvfrom/1, recvfrom/2,
          send/2, sendto/3,
-	 read/1, read/2, write/2,
-	 getfd/1,
+         read/1, read/2, write/2,
          listen/2, ioctl/3,
-         shutdown/2, close/1]).
+         shutdown/2, close/1, getfd/1]).
 -export([family/1, type/1, protocol/1, arphdr/1]).
 
 %% for debugging/testing only
@@ -58,10 +57,11 @@
 
 -opaque socket() :: #gen_socket{} | integer().
 -define(IS_SOCKET(Term),
-	(is_record(Term, gen_socket) andalso
-	 is_port(Term#gen_socket.port))).
+  (is_record(Term, gen_socket) andalso
+   is_port(Term#gen_socket.port))).
+
 -define(IS_NIF_SOCKET(Term),
-	(?IS_SOCKET(Term) orelse is_integer(Term))).
+    (?IS_SOCKET(Term) orelse is_binary(Term))).
 
 -define(IS_TIMEOUT(Term),
     ((Term == infinity) orelse (is_integer(Term) andalso Term >= 0))).
@@ -116,7 +116,7 @@ init() ->
 
 %% internal accessors
 -compile([{inline, nif_socket_of/1}, {inline, port_of/1}]).
-nif_socket_of(Fd) when is_integer(Fd) -> Fd;
+nif_socket_of(Fd) when is_binary(Fd) -> Fd;
 nif_socket_of(#gen_socket{fd = Fd}) -> Fd.
 port_of(#gen_socket{port = Port}) -> Port.
 
@@ -135,12 +135,8 @@ controlling_process(Socket, NewOwner) when ?IS_SOCKET(Socket) ->
 controlling_process(Socket, NewOwner) ->
     error(badarg, [Socket, NewOwner]).
 
--spec getfd(socket()) -> integer().
-getfd(Socket) ->
-    nif_socket_of(Socket).
-
 -spec close(socket()) -> ok.
-close(Socket) when is_integer(Socket) ->
+close(Socket) when is_binary(Socket) ->
     nif_close(Socket);
 close(Socket) when ?IS_SOCKET(Socket) ->
     erlang:port_close(port_of(Socket)),
@@ -158,16 +154,19 @@ shutdown(Socket, read_write) when ?IS_NIF_SOCKET(Socket) ->
 shutdown(Socket, How) ->
     error(badarg, [Socket, How]).
 
+getfd(Socket) -> nif_getfd(nif_socket_of(Socket)).
+
 -spec socket(term(), term(), term()) -> {ok, socket()} | {error, term()}.
 socket(Family0, Type0, Protocol0) ->
     raw_socket(Family0, Type0, Protocol0,
-	       fun(Family, Type, Protocol, Fd) ->
-		       CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [Fd])),
-		       Port = open_port({spawn_driver, CmdStr}, [binary]),
-		       Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
-		       erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
-		       {ok, Socket}
-	       end).
+         fun(Family, Type, Protocol, Fd) ->
+           {ok, FdNum} = nif_getfd(Fd),
+           CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [FdNum])),
+           Port = open_port({spawn_driver, CmdStr}, [binary]),
+           Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
+           erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
+           {ok, Socket}
+         end).
 
 -spec raw_socket(term(), term(), term()) -> {ok, socket()} | {error, term()}.
 raw_socket(Family, Type, Protocol) ->
@@ -182,10 +181,10 @@ raw_socket(Family, Type, Protocol, PostFun) when is_atom(Protocol) ->
 raw_socket(Family, Type, Protocol, PostFun) when is_integer(Family), is_integer(Type), is_integer(Protocol) ->
     ok     = init(), %% TODO: make this unnecessary by fixing the on_load handler
     case nif_socket(Family, Type, Protocol) of
-	{ok, Fd} ->
-	    PostFun(Family, Type, Protocol, Fd);
-	Error ->
-	    Error
+  {ok, Fd} ->
+      PostFun(Family, Type, Protocol, Fd);
+  Error ->
+      Error
     end;
 raw_socket(Family, Type, Protocol, _PostFun) ->
     error(badarg, [Family, Type, Protocol]).
@@ -193,13 +192,14 @@ raw_socket(Family, Type, Protocol, _PostFun) ->
 -spec socketat(term(), term(), term(), term()) -> {ok, socket()} | {error, term()}.
 socketat(NetNsFile0, Family0, Type0, Protocol0) ->
     raw_socketat(NetNsFile0, Family0, Type0, Protocol0,
-		 fun(_, Family, Type, Protocol, Fd) ->
-			 CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [Fd])),
-			 Port = open_port({spawn_driver, CmdStr}, [binary]),
-			 Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
-			 erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
-			 {ok, Socket}
-		 end).
+     fun(_, Family, Type, Protocol, Fd) ->
+       {ok, FdNum} = nif_getfd(Fd),
+       CmdStr = lists:flatten(io_lib:format("gen_socket ~w", [FdNum])),
+       Port = open_port({spawn_driver, CmdStr}, [binary]),
+       Socket = #gen_socket{port = Port, fd = Fd, family = Family, type = Type, protocol = Protocol},
+       erlang:port_call(Port, ?GS_CALL_SETSOCKET, Socket),
+       {ok, Socket}
+     end).
 
 -spec raw_socketat(term(), term(), term(), term()) -> {ok, socket()} | {error, term()}.
 raw_socketat(NetNsFile, Family, Type, Protocol) ->
@@ -216,10 +216,10 @@ raw_socketat(NetNsFile, Family, Type, Protocol, PostFun) when is_atom(Protocol) 
 raw_socketat(NetNsFile, Family, Type, Protocol, PostFun) when is_binary(NetNsFile), is_integer(Family), is_integer(Type), is_integer(Protocol) ->
     ok     = init(), %% TODO: make this unnecessary by fixing the on_load handler
     case nif_socketat(NetNsFile, Family, Type, Protocol) of
-	{ok, Fd} ->
-	    PostFun(NetNsFile, Family, Type, Protocol, Fd);
-	Error ->
-	    Error
+  {ok, Fd} ->
+      PostFun(NetNsFile, Family, Type, Protocol, Fd);
+  Error ->
+      Error
     end;
 raw_socketat(NetNsFile, Family, Type, Protocol, _PostFun) ->
     error(badarg, [NetNsFile, Family, Type, Protocol]).
@@ -337,7 +337,7 @@ output_event(Socket, Set) ->
 recv(Socket) when ?IS_NIF_SOCKET(Socket) ->
     nif_recv(nif_socket_of(Socket), -1).
 
--spec recv(socket(), non_neg_integer()) -> {ok, binary()} | {error, closed} | {error, posix_error()}.
+-spec recv(socket(), binary()) -> {ok, binary()} | {error, closed} | {error, posix_error()}.
 recv(Socket, Length) when ?IS_NIF_SOCKET(Socket), is_integer(Length), Length > 0 ->
     nif_recv(nif_socket_of(Socket), Length);
 recv(Socket, Length) ->
@@ -424,6 +424,8 @@ nif_socketat(_NetNsFile, _Family, _Type, _Protocol) ->
     error(nif_not_loaded).
 nif_close(_NifSocket) ->
     error(nif_not_loaded).
+nif_getfd(_NifSocket) ->
+    error(nif_not_loaded).
 nif_getsockname(_NifSocket) ->
     error(nif_not_loaded).
 nif_getpeername(_NifSocket) ->
@@ -468,92 +470,88 @@ opt_level_to_int(sol_socket) -> ?SOL_SOCKET;
 opt_level_to_int(X)          -> protocol_to_int(X).
 
 
-opt_name_to_int(?SOL_IP, tos)			-> ?IP_TOS;
-opt_name_to_int(?SOL_IP, ttl)			-> ?IP_TTL;
-opt_name_to_int(?SOL_IP, options)		-> ?IP_OPTIONS;
-opt_name_to_int(?SOL_IP, hdrincl)		-> ?IP_HDRINCL;
-opt_name_to_int(?SOL_IP, router_alert)		-> ?IP_ROUTER_ALERT;
-opt_name_to_int(?SOL_IP, recvopts)		-> ?IP_RECVOPTS;
-opt_name_to_int(?SOL_IP, retopts)		-> ?IP_RETOPTS;
-opt_name_to_int(?SOL_IP, pktinfo)		-> ?IP_PKTINFO;
-opt_name_to_int(?SOL_IP, pktoptions)		-> ?IP_PKTOPTIONS;
-opt_name_to_int(?SOL_IP, pmtudisc)		-> ?IP_PMTUDISC;
-opt_name_to_int(?SOL_IP, mtu_discover)		-> ?IP_MTU_DISCOVER;
-opt_name_to_int(?SOL_IP, recverr)		-> ?IP_RECVERR;
-opt_name_to_int(?SOL_IP, recvttl)		-> ?IP_RECVTTL;
-opt_name_to_int(?SOL_IP, recvtos)		-> ?IP_RECVTOS;
-opt_name_to_int(?SOL_IP, mtu)			-> ?IP_MTU;
-opt_name_to_int(?SOL_IP, freebind)		-> ?IP_FREEBIND;
-opt_name_to_int(?SOL_IP, ipsec_policy)		-> ?IP_IPSEC_POLICY;
-opt_name_to_int(?SOL_IP, xfrm_policy)		-> ?IP_XFRM_POLICY;
-opt_name_to_int(?SOL_IP, passsec)		-> ?IP_PASSSEC;
-opt_name_to_int(?SOL_IP, transparent)		-> ?IP_TRANSPARENT;
-opt_name_to_int(?SOL_IP, origdstaddr)		-> ?IP_ORIGDSTADDR;
-opt_name_to_int(?SOL_IP, minttl)		-> ?IP_MINTTL;
-opt_name_to_int(?SOL_IP, nodefrag)		-> ?IP_NODEFRAG;
-opt_name_to_int(?SOL_IP, multicast_if)		-> ?IP_MULTICAST_IF;
-opt_name_to_int(?SOL_IP, multicast_ttl)		-> ?IP_MULTICAST_TTL;
-opt_name_to_int(?SOL_IP, multicast_loop)	-> ?IP_MULTICAST_LOOP;
-opt_name_to_int(?SOL_IP, add_membership)	-> ?IP_ADD_MEMBERSHIP;
-opt_name_to_int(?SOL_IP, drop_membership)	-> ?IP_DROP_MEMBERSHIP;
-opt_name_to_int(?SOL_IP, unblock_source)	-> ?IP_UNBLOCK_SOURCE;
-opt_name_to_int(?SOL_IP, block_source)		-> ?IP_BLOCK_SOURCE;
-opt_name_to_int(?SOL_IP, add_source_membership)		-> ?IP_ADD_SOURCE_MEMBERSHIP;
-opt_name_to_int(?SOL_IP, drop_source_membership)	-> ?IP_DROP_SOURCE_MEMBERSHIP;
-opt_name_to_int(?SOL_IP, msfilter)		-> ?IP_MSFILTER;
-opt_name_to_int(?SOL_IP, mcast_join_group)		-> ?MCAST_JOIN_GROUP;
-opt_name_to_int(?SOL_IP, mcast_block_source)		-> ?MCAST_BLOCK_SOURCE;
-opt_name_to_int(?SOL_IP, mcast_unblock_source)		-> ?MCAST_UNBLOCK_SOURCE;
-opt_name_to_int(?SOL_IP, mcast_leave_group)		-> ?MCAST_LEAVE_GROUP;
-opt_name_to_int(?SOL_IP, mcast_join_source_group)	-> ?MCAST_JOIN_SOURCE_GROUP;
-opt_name_to_int(?SOL_IP, mcast_leave_source_group)	-> ?MCAST_LEAVE_SOURCE_GROUP;
-opt_name_to_int(?SOL_IP, mcast_msfilter)		-> ?MCAST_MSFILTER;
-opt_name_to_int(?SOL_IP, multicast_all)		-> ?IP_MULTICAST_ALL;
-opt_name_to_int(?SOL_IP, unicast_if)		-> ?IP_UNICAST_IF;
+opt_name_to_int(?SOL_IP, tos)      -> ?IP_TOS;
+opt_name_to_int(?SOL_IP, ttl)      -> ?IP_TTL;
+opt_name_to_int(?SOL_IP, options)    -> ?IP_OPTIONS;
+opt_name_to_int(?SOL_IP, hdrincl)    -> ?IP_HDRINCL;
+opt_name_to_int(?SOL_IP, router_alert)    -> ?IP_ROUTER_ALERT;
+opt_name_to_int(?SOL_IP, recvopts)    -> ?IP_RECVOPTS;
+opt_name_to_int(?SOL_IP, retopts)    -> ?IP_RETOPTS;
+opt_name_to_int(?SOL_IP, pktinfo)    -> ?IP_PKTINFO;
+opt_name_to_int(?SOL_IP, pktoptions)    -> ?IP_PKTOPTIONS;
+opt_name_to_int(?SOL_IP, pmtudisc)    -> ?IP_PMTUDISC;
+opt_name_to_int(?SOL_IP, mtu_discover)    -> ?IP_MTU_DISCOVER;
+opt_name_to_int(?SOL_IP, recverr)    -> ?IP_RECVERR;
+opt_name_to_int(?SOL_IP, recvttl)    -> ?IP_RECVTTL;
+opt_name_to_int(?SOL_IP, recvtos)    -> ?IP_RECVTOS;
+opt_name_to_int(?SOL_IP, mtu)      -> ?IP_MTU;
+opt_name_to_int(?SOL_IP, freebind)    -> ?IP_FREEBIND;
+opt_name_to_int(?SOL_IP, ipsec_policy)    -> ?IP_IPSEC_POLICY;
+opt_name_to_int(?SOL_IP, xfrm_policy)    -> ?IP_XFRM_POLICY;
+opt_name_to_int(?SOL_IP, passsec)    -> ?IP_PASSSEC;
+opt_name_to_int(?SOL_IP, transparent)    -> ?IP_TRANSPARENT;
+opt_name_to_int(?SOL_IP, origdstaddr)    -> ?IP_ORIGDSTADDR;
+opt_name_to_int(?SOL_IP, minttl)    -> ?IP_MINTTL;
+opt_name_to_int(?SOL_IP, nodefrag)    -> ?IP_NODEFRAG;
+opt_name_to_int(?SOL_IP, multicast_if)    -> ?IP_MULTICAST_IF;
+opt_name_to_int(?SOL_IP, multicast_ttl)    -> ?IP_MULTICAST_TTL;
+opt_name_to_int(?SOL_IP, multicast_loop)  -> ?IP_MULTICAST_LOOP;
+opt_name_to_int(?SOL_IP, add_membership)  -> ?IP_ADD_MEMBERSHIP;
+opt_name_to_int(?SOL_IP, drop_membership)  -> ?IP_DROP_MEMBERSHIP;
+opt_name_to_int(?SOL_IP, unblock_source)  -> ?IP_UNBLOCK_SOURCE;
+opt_name_to_int(?SOL_IP, block_source)    -> ?IP_BLOCK_SOURCE;
+opt_name_to_int(?SOL_IP, add_source_membership)    -> ?IP_ADD_SOURCE_MEMBERSHIP;
+opt_name_to_int(?SOL_IP, drop_source_membership)  -> ?IP_DROP_SOURCE_MEMBERSHIP;
+opt_name_to_int(?SOL_IP, msfilter)    -> ?IP_MSFILTER;
+opt_name_to_int(?SOL_IP, mcast_join_group)    -> ?MCAST_JOIN_GROUP;
+opt_name_to_int(?SOL_IP, mcast_block_source)    -> ?MCAST_BLOCK_SOURCE;
+opt_name_to_int(?SOL_IP, mcast_unblock_source)    -> ?MCAST_UNBLOCK_SOURCE;
+opt_name_to_int(?SOL_IP, mcast_leave_group)    -> ?MCAST_LEAVE_GROUP;
+opt_name_to_int(?SOL_IP, mcast_join_source_group)  -> ?MCAST_JOIN_SOURCE_GROUP;
+opt_name_to_int(?SOL_IP, mcast_leave_source_group)  -> ?MCAST_LEAVE_SOURCE_GROUP;
+opt_name_to_int(?SOL_IP, mcast_msfilter)    -> ?MCAST_MSFILTER;
+opt_name_to_int(?SOL_IP, multicast_all)    -> ?IP_MULTICAST_ALL;
+opt_name_to_int(?SOL_IP, unicast_if)    -> ?IP_UNICAST_IF;
 
-opt_name_to_int(?SOL_SOCKET, debug)		-> ?SO_DEBUG;
-opt_name_to_int(?SOL_SOCKET, reuseaddr)		-> ?SO_REUSEADDR;
-opt_name_to_int(?SOL_SOCKET, type)		-> ?SO_TYPE;
-opt_name_to_int(?SOL_SOCKET, error)		-> ?SO_ERROR;
-opt_name_to_int(?SOL_SOCKET, dontroute)		-> ?SO_DONTROUTE;
-opt_name_to_int(?SOL_SOCKET, broadcast)		-> ?SO_BROADCAST;
-opt_name_to_int(?SOL_SOCKET, sndbuf)		-> ?SO_SNDBUF;
-opt_name_to_int(?SOL_SOCKET, rcvbuf)		-> ?SO_RCVBUF;
-opt_name_to_int(?SOL_SOCKET, sndbufforce)	-> ?SO_SNDBUFFORCE;
-opt_name_to_int(?SOL_SOCKET, rcvbufforce)	-> ?SO_RCVBUFFORCE;
-opt_name_to_int(?SOL_SOCKET, keepalive)		-> ?SO_KEEPALIVE;
-opt_name_to_int(?SOL_SOCKET, oobinline)		-> ?SO_OOBINLINE;
-opt_name_to_int(?SOL_SOCKET, no_check)		-> ?SO_NO_CHECK;
-opt_name_to_int(?SOL_SOCKET, priority)		-> ?SO_PRIORITY;
-opt_name_to_int(?SOL_SOCKET, linger)		-> ?SO_LINGER;
-opt_name_to_int(?SOL_SOCKET, bsdcompat)		-> ?SO_BSDCOMPAT;
-opt_name_to_int(?SOL_SOCKET, passcred)		-> ?SO_PASSCRED;
-opt_name_to_int(?SOL_SOCKET, peercred)		-> ?SO_PEERCRED;
-opt_name_to_int(?SOL_SOCKET, rcvlowat)		-> ?SO_RCVLOWAT;
-opt_name_to_int(?SOL_SOCKET, sndlowat)		-> ?SO_SNDLOWAT;
-opt_name_to_int(?SOL_SOCKET, rcvtimeo)		-> ?SO_RCVTIMEO;
-opt_name_to_int(?SOL_SOCKET, sndtimeo)		-> ?SO_SNDTIMEO;
-opt_name_to_int(?SOL_SOCKET, security_authentication)		-> ?SO_SECURITY_AUTHENTICATION;
-opt_name_to_int(?SOL_SOCKET, security_encryption_transport)	-> ?SO_SECURITY_ENCRYPTION_TRANSPORT;
-opt_name_to_int(?SOL_SOCKET, security_encryption_network)	-> ?SO_SECURITY_ENCRYPTION_NETWORK;
-opt_name_to_int(?SOL_SOCKET, bindtodevice)	-> ?SO_BINDTODEVICE;
-opt_name_to_int(?SOL_SOCKET, attach_filter)	-> ?SO_ATTACH_FILTER;
-opt_name_to_int(?SOL_SOCKET, detach_filter)	-> ?SO_DETACH_FILTER;
-opt_name_to_int(?SOL_SOCKET, peername)		-> ?SO_PEERNAME;
-opt_name_to_int(?SOL_SOCKET, timestamp)		-> ?SO_TIMESTAMP;
-opt_name_to_int(?SOL_SOCKET, acceptconn)	-> ?SO_ACCEPTCONN;
-opt_name_to_int(?SOL_SOCKET, peersec)		-> ?SO_PEERSEC;
-opt_name_to_int(?SOL_SOCKET, passsec)		-> ?SO_PASSSEC;
-opt_name_to_int(?SOL_SOCKET, timestampns)	-> ?SO_TIMESTAMPNS;
-opt_name_to_int(?SOL_SOCKET, mark)		-> ?SO_MARK;
-opt_name_to_int(?SOL_SOCKET, timestamping)	-> ?SO_TIMESTAMPING;
-opt_name_to_int(?SOL_SOCKET, protocol)		-> ?SO_PROTOCOL;
-opt_name_to_int(?SOL_SOCKET, domain)		-> ?SO_DOMAIN;
-opt_name_to_int(?SOL_SOCKET, rxq_ovfl)		-> ?SO_RXQ_OVFL.
-
-
-
-
+opt_name_to_int(?SOL_SOCKET, debug)    -> ?SO_DEBUG;
+opt_name_to_int(?SOL_SOCKET, reuseaddr)    -> ?SO_REUSEADDR;
+opt_name_to_int(?SOL_SOCKET, type)    -> ?SO_TYPE;
+opt_name_to_int(?SOL_SOCKET, error)    -> ?SO_ERROR;
+opt_name_to_int(?SOL_SOCKET, dontroute)    -> ?SO_DONTROUTE;
+opt_name_to_int(?SOL_SOCKET, broadcast)    -> ?SO_BROADCAST;
+opt_name_to_int(?SOL_SOCKET, sndbuf)    -> ?SO_SNDBUF;
+opt_name_to_int(?SOL_SOCKET, rcvbuf)    -> ?SO_RCVBUF;
+opt_name_to_int(?SOL_SOCKET, sndbufforce)  -> ?SO_SNDBUFFORCE;
+opt_name_to_int(?SOL_SOCKET, rcvbufforce)  -> ?SO_RCVBUFFORCE;
+opt_name_to_int(?SOL_SOCKET, keepalive)    -> ?SO_KEEPALIVE;
+opt_name_to_int(?SOL_SOCKET, oobinline)    -> ?SO_OOBINLINE;
+opt_name_to_int(?SOL_SOCKET, no_check)    -> ?SO_NO_CHECK;
+opt_name_to_int(?SOL_SOCKET, priority)    -> ?SO_PRIORITY;
+opt_name_to_int(?SOL_SOCKET, linger)    -> ?SO_LINGER;
+opt_name_to_int(?SOL_SOCKET, bsdcompat)    -> ?SO_BSDCOMPAT;
+opt_name_to_int(?SOL_SOCKET, passcred)    -> ?SO_PASSCRED;
+opt_name_to_int(?SOL_SOCKET, peercred)    -> ?SO_PEERCRED;
+opt_name_to_int(?SOL_SOCKET, rcvlowat)    -> ?SO_RCVLOWAT;
+opt_name_to_int(?SOL_SOCKET, sndlowat)    -> ?SO_SNDLOWAT;
+opt_name_to_int(?SOL_SOCKET, rcvtimeo)    -> ?SO_RCVTIMEO;
+opt_name_to_int(?SOL_SOCKET, sndtimeo)    -> ?SO_SNDTIMEO;
+opt_name_to_int(?SOL_SOCKET, security_authentication)    -> ?SO_SECURITY_AUTHENTICATION;
+opt_name_to_int(?SOL_SOCKET, security_encryption_transport)  -> ?SO_SECURITY_ENCRYPTION_TRANSPORT;
+opt_name_to_int(?SOL_SOCKET, security_encryption_network)  -> ?SO_SECURITY_ENCRYPTION_NETWORK;
+opt_name_to_int(?SOL_SOCKET, bindtodevice)  -> ?SO_BINDTODEVICE;
+opt_name_to_int(?SOL_SOCKET, attach_filter)  -> ?SO_ATTACH_FILTER;
+opt_name_to_int(?SOL_SOCKET, detach_filter)  -> ?SO_DETACH_FILTER;
+opt_name_to_int(?SOL_SOCKET, peername)    -> ?SO_PEERNAME;
+opt_name_to_int(?SOL_SOCKET, timestamp)    -> ?SO_TIMESTAMP;
+opt_name_to_int(?SOL_SOCKET, acceptconn)  -> ?SO_ACCEPTCONN;
+opt_name_to_int(?SOL_SOCKET, peersec)    -> ?SO_PEERSEC;
+opt_name_to_int(?SOL_SOCKET, passsec)    -> ?SO_PASSSEC;
+opt_name_to_int(?SOL_SOCKET, timestampns)  -> ?SO_TIMESTAMPNS;
+opt_name_to_int(?SOL_SOCKET, mark)    -> ?SO_MARK;
+opt_name_to_int(?SOL_SOCKET, timestamping)  -> ?SO_TIMESTAMPING;
+opt_name_to_int(?SOL_SOCKET, protocol)    -> ?SO_PROTOCOL;
+opt_name_to_int(?SOL_SOCKET, domain)    -> ?SO_DOMAIN;
+opt_name_to_int(?SOL_SOCKET, rxq_ovfl)    -> ?SO_RXQ_OVFL.
 
 
 sockopt_len(?SOL_IP, OptName)

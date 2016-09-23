@@ -79,10 +79,10 @@ typedef enum {
 } GsCall;
 
 typedef struct {
-	ErlDrvPort drv_port;
-	int fd;
-	int socket_len;
-	char socket[128];
+    ErlDrvPort drv_port;
+    int fd;
+    int socket_len;
+    char socket[128];
 } GsState;
 
 static ErlDrvTermData input_atom;
@@ -155,12 +155,12 @@ gs_ei_single_atom(GsState* state, const char* atom, char** rbuf, DRV_SIZE_T rlen
 static void
 gs_send_single_atom(GsState* state, ErlDrvTermData atom)
 {
-	ErlDrvTermData output[] = {
-		ERL_DRV_EXT2TERM, (ErlDrvTermData)state->socket, state->socket_len,
-		ERL_DRV_ATOM, atom,
-		ERL_DRV_TUPLE, 2
-	};
-	driver_output_term(state->drv_port, output, sizeof(output) / sizeof(ErlDrvTermData));
+    ErlDrvTermData output[] = {
+        ERL_DRV_EXT2TERM, (ErlDrvTermData)state->socket, state->socket_len,
+        ERL_DRV_ATOM, atom,
+        ERL_DRV_TUPLE, 2
+    };
+    driver_output_term(state->drv_port, output, sizeof(output) / sizeof(ErlDrvTermData));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -168,13 +168,13 @@ gs_send_single_atom(GsState* state, ErlDrvTermData atom)
 static DRV_SSIZE_T
 gs_call_setsocket(GsState* state, char* buf, DRV_SIZE_T len, char** rbuf, DRV_SIZE_T rlen)
 {
-	if (len > sizeof(state->socket))
-		return DRV_CALL_BADARG;
+    if (len > sizeof(state->socket))
+        return DRV_CALL_BADARG;
 
-	memcpy(&state->socket, buf, len);
-	state->socket_len = len;
+    memcpy(&state->socket, buf, len);
+    state->socket_len = len;
 
-	return gs_ei_single_atom(state, "ok", rbuf, rlen);
+    return gs_ei_single_atom(state, "ok", rbuf, rlen);
 }
 
 static DRV_SSIZE_T
@@ -186,8 +186,8 @@ gs_call_poll_input(GsState* state, char* buf, DRV_SIZE_T len, char** rbuf, DRV_S
     int set;
 
     if (ei_decode_version(buf, &ei_idx, &ei_version)
-	|| ei_decode_boolean(buf, &ei_idx, &set))
-	    return DRV_CALL_BADARG;
+    || ei_decode_boolean(buf, &ei_idx, &set))
+        return DRV_CALL_BADARG;
 
     driver_select(state->drv_port, (ErlDrvEvent)(long) state->fd, ERL_DRV_READ, set);
     return gs_ei_single_atom(state, "ok", rbuf, rlen);
@@ -202,8 +202,8 @@ gs_call_poll_output(GsState* state, char* buf, DRV_SIZE_T len, char** rbuf, DRV_
     int set;
 
     if (ei_decode_version(buf, &ei_idx, &ei_version)
-	|| ei_decode_boolean(buf, &ei_idx, &set))
-	    return DRV_CALL_BADARG;
+    || ei_decode_boolean(buf, &ei_idx, &set))
+        return DRV_CALL_BADARG;
 
     driver_select(state->drv_port, (ErlDrvEvent)(long) state->fd, ERL_DRV_WRITE, set);
     return gs_ei_single_atom(state, "ok", rbuf, rlen);
@@ -229,13 +229,13 @@ gs_start(ErlDrvPort port, char* command_str)
 
     // parse domain, type, protocol from argument string
     if (sscanf(command_str, "gen_socket %d", &state->fd) == EOF) {
-	    driver_free(state);
-	    return ERL_DRV_ERROR_BADARG;
+        driver_free(state);
+        return ERL_DRV_ERROR_BADARG;
     }
 
     if (state->fd == -1) {
-	    driver_free(state);
-	    return ERL_DRV_ERROR_ERRNO;
+        driver_free(state);
+        return ERL_DRV_ERROR_ERRNO;
     }
 
     driver_select(port, (ErlDrvEvent)(long) state->fd, ERL_DRV_USE, 1);
@@ -268,7 +268,7 @@ gs_call(ErlDrvData drv_data,
     case GS_CALL_POLL_INPUT:
             return gs_call_poll_input(state, buf, len, rbuf, rlen);
     case GS_CALL_POLL_OUTPUT:
-	    return gs_call_poll_output(state, buf, len, rbuf, rlen);
+        return gs_call_poll_output(state, buf, len, rbuf, rlen);
     default:
             return DRV_CALL_BADARG;
     }
@@ -331,8 +331,8 @@ static ErlDrvEntry gs_driver_entry = {
 
 DRIVER_INIT(gen_socket)
 {
-	input_atom = driver_mk_atom("input_ready");
-	output_atom = driver_mk_atom("output_ready");
+    input_atom = driver_mk_atom("input_ready");
+    output_atom = driver_mk_atom("output_ready");
 
-	return &gs_driver_entry;
+    return &gs_driver_entry;
 }
